@@ -66,7 +66,7 @@ fn main() -> ExitCode {
             }
         }
     };
-    update_toml(dep_item, dep_key, &pathified_path);
+    update_toml(dep_item, dep_key, &args.dep_name, &pathified_path);
     std::fs::write("Cargo.toml", doc.to_string().as_bytes()).unwrap();
     ExitCode::SUCCESS
 }
@@ -123,12 +123,17 @@ fn find_dep_dir(dep_key: &str, dep_ver: &str) -> Option<PathBuf> {
     }
 }
 
-fn update_toml(dep_value: &mut Item, mut dep_key: toml_edit::KeyMut<'_>, dep_path: &str) {
+fn update_toml(
+    dep_value: &mut Item,
+    mut dep_key: toml_edit::KeyMut<'_>,
+    dep_name: &str,
+    dep_path: &str,
+) {
     let old_value_as_string = dep_value.to_string();
     let mut table = InlineTable::new();
     dep_key
         .leaf_decor_mut()
-        .set_prefix(format!("#{old_value_as_string}\n"));
+        .set_prefix(format!("#{dep_name} ={old_value_as_string}\n"));
     table.insert("path", dep_path.into());
     *dep_value = Item::Value(Value::InlineTable(table));
 }

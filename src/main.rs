@@ -12,7 +12,7 @@ struct Args {
     /// Name of the dependency to pathify
     dep_name: String,
     /// Point to an already existing directory instead of copying over from `$CARGO_HOME`
-    #[arg(long = "path")]
+    #[arg(long)]
     existing: Option<String>,
 }
 

@@ -1,4 +1,5 @@
 use {
+    clap::Parser,
     std::{
         path::{Path, PathBuf},
         process::{Command, ExitCode},
@@ -6,11 +7,17 @@ use {
     toml_edit::{DocumentMut, InlineTable, Item, Value},
 };
 
+#[derive(clap::Parser)]
+struct Args {
+    /// Name of the dependency to pathify
+    dep_name: String,
+    /// Point to an already existing directory instead of copying over from `$CARGO_HOME`
+    #[arg(long = "path")]
+    existing: Option<String>,
+}
+
 fn main() -> ExitCode {
-    let Some(depname) = std::env::args().nth(2) else {
-        eprintln!("Need dependency name as argument");
-        return ExitCode::FAILURE;
-    };
+    let args = Args::parse_from(std::env::args_os().skip(1));
     let cargo_toml = match std::fs::read_to_string("Cargo.toml") {
         Ok(s) => s,
         Err(e) => {
@@ -28,21 +35,38 @@ fn main() -> ExitCode {
     let Some((dep_key, dep_item)) = doc["dependencies"]
         .as_table_mut()
         .expect("dependencies not a table?")
-        .get_key_value_mut(&depname)
+        .get_key_value_mut(&args.dep_name)
     else {
-        eprintln!("Could not find '{depname}' in dependencies.");
+        eprintln!("Could not find '{}' in dependencies.", args.dep_name);
         return ExitCode::FAILURE;
     };
-    if let Some(dir) = find_dep_dir(&dep_key.to_string(), get_dep_ver_item(dep_item).unwrap()) {
-        let cwd = std::env::current_dir().unwrap();
-        std::fs::create_dir("pathified").unwrap();
-        copy_dir_all(&dir, &cwd.join(format!("pathified/{depname}")));
-        eprintln!("Found dependency dir: {dir:?}");
-    } else {
-        eprintln!("Could not find dependency directory. Sorry.");
-        return ExitCode::FAILURE;
-    }
-    update_toml(dep_item, dep_key, &depname);
+    let pathified_path = match args.existing {
+        Some(path) => path,
+        None => {
+            if let Some(dir) =
+                find_dep_dir(&dep_key.to_string(), get_dep_ver_item(dep_item).unwrap())
+            {
+                let cwd = std::env::current_dir().unwrap();
+                std::fs::create_dir("pathified").unwrap();
+                let destination_path = cwd.join(format!("pathified/{}", args.dep_name));
+                match destination_path.to_str() {
+                    Some(destination_path) => {
+                        copy_dir_all(&dir, destination_path.as_ref());
+                        eprintln!("Found dependency dir: {dir:?}");
+                        destination_path.to_string()
+                    }
+                    None => {
+                        eprintln!("Sorry, the calculated path isn't valid UTF-8. Giving up.");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            } else {
+                eprintln!("Could not find dependency directory. Sorry.");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
+    update_toml(dep_item, dep_key, &pathified_path);
     std::fs::write("Cargo.toml", doc.to_string().as_bytes()).unwrap();
     ExitCode::SUCCESS
 }
@@ -99,12 +123,12 @@ fn find_dep_dir(dep_key: &str, dep_ver: &str) -> Option<PathBuf> {
     }
 }
 
-fn update_toml(dep_value: &mut Item, mut dep_key: toml_edit::KeyMut<'_>, depname: &str) {
+fn update_toml(dep_value: &mut Item, mut dep_key: toml_edit::KeyMut<'_>, dep_path: &str) {
     let old_value_as_string = dep_value.to_string();
     let mut table = InlineTable::new();
     dep_key
         .leaf_decor_mut()
         .set_prefix(format!("#{old_value_as_string}\n"));
-    table.insert("path", format!("pathified/{depname}").into());
+    table.insert("path", dep_path.into());
     *dep_value = Item::Value(Value::InlineTable(table));
 }

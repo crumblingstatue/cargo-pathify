@@ -25,7 +25,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let Some((dep_key, dep_value)) = doc["dependencies"]
+    let Some((dep_key, dep_item)) = doc["dependencies"]
         .as_table_mut()
         .expect("dependencies not a table?")
         .get_key_value_mut(&depname)
@@ -33,7 +33,7 @@ fn main() -> ExitCode {
         eprintln!("Could not find '{depname}' in dependencies.");
         return ExitCode::FAILURE;
     };
-    if let Some(dir) = find_dep_dir(&dep_key.to_string(), dep_value.as_str().unwrap()) {
+    if let Some(dir) = find_dep_dir(&dep_key.to_string(), get_dep_ver_item(dep_item).unwrap()) {
         let cwd = std::env::current_dir().unwrap();
         std::fs::create_dir("pathified").unwrap();
         copy_dir_all(&dir, &cwd.join(format!("pathified/{depname}")));
@@ -42,9 +42,25 @@ fn main() -> ExitCode {
         eprintln!("Could not find dependency directory. Sorry.");
         return ExitCode::FAILURE;
     }
-    update_toml(dep_value, dep_key, &depname);
+    update_toml(dep_item, dep_key, &depname);
     std::fs::write("Cargo.toml", doc.to_string().as_bytes()).unwrap();
     ExitCode::SUCCESS
+}
+
+fn get_dep_ver_item(item: &Item) -> Option<&str> {
+    match item {
+        Item::Value(val) => get_dep_ver_val(val),
+        Item::Table(tbl) => get_dep_ver_item(&tbl["version"]),
+        _ => None,
+    }
+}
+
+fn get_dep_ver_val(val: &Value) -> Option<&str> {
+    match val {
+        Value::String(s) => Some(s.value()),
+        Value::InlineTable(tbl) => get_dep_ver_val(&tbl["version"]),
+        _ => None,
+    }
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) {

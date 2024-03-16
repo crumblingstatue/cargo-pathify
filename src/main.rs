@@ -3,7 +3,7 @@ use {
         path::{Path, PathBuf},
         process::{Command, ExitCode},
     },
-    toml_edit::{Document, InlineTable, Item, Value},
+    toml_edit::{DocumentMut, InlineTable, Item, Value},
 };
 
 fn main() -> ExitCode {
@@ -18,7 +18,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut doc = match cargo_toml.parse::<Document>() {
+    let mut doc = match cargo_toml.parse::<DocumentMut>() {
         Ok(doc) => doc,
         Err(e) => {
             eprintln!("Oh no! Failed to parse Cargo.toml: {e}");
